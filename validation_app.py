@@ -69,50 +69,42 @@ if key_file and data_file:
 
         def validate_sheet(df, sheet_name):
             validation_msgs = {
-                'empty_sheet': {
-                    'EN': 'Sheet is present but contains no data',
-                    'FR': 'La feuille est présente mais ne contient aucune donnée'
-                },
-                'completely_empty': {
-                    'EN': 'The variable "{}" is completely empty.',
-                    'FR': 'La variable "{}" est complètement vide.'
-                },
-                'missing_required': {
-                    'EN': 'Field is required but missing',
-                    'FR': 'Champ requis mais manquant'
-                },
-                'expected_date': {
-                    'EN': 'Expected format is DD-MM-YYYY',
-                    'FR': 'Format attendu : JJ-MM-AAAA'
-                },
-                'expected_numeric': {
-                    'EN': 'Expected a numeric value',
-                    'FR': 'Une valeur numérique était attendue'
-                },
-                'invalid_value': {
-                    'EN': "'{}' not in allowed values",
-                    'FR': "'{}' ne fait pas partie des valeurs autorisées"
-                },
-                'alpha_numeric': {
-                    'EN': 'Value must be alphanumeric, not digits only',
-                    'FR': 'La valeur doit être alphanumérique, pas uniquement des chiffres'
-                },
-                'duplicate_combo': {
-                    'EN': 'Duplicate entries found based on combination of: {}',
-                    'FR': 'Doublons détectés selon la combinaison : {}'
-                }
+                'empty_sheet': {'EN': 'Sheet is present but contains no data', 'FR': 'La feuille est présente mais ne contient aucune donnée'},
+                'completely_empty': {'EN': 'The variable "{}" is completely empty.', 'FR': 'La variable "{}" est complètement vide.'},
+                'missing_required': {'EN': 'Field is required but missing', 'FR': 'Champ requis mais manquant'},
+                'expected_date': {'EN': 'Expected format is DD-MM-YYYY', 'FR': 'Format attendu : JJ-MM-AAAA'},
+                'expected_numeric': {'EN': 'Expected a numeric value', 'FR': 'Une valeur numérique était attendue'},
+                'invalid_value': {'EN': "'{}' not in allowed values", 'FR': "'{}' ne fait pas partie des valeurs autorisées"},
+                'alpha_numeric': {'EN': 'Value must be alphanumeric, not digits only', 'FR': 'La valeur doit être alphanumérique, pas uniquement des chiffres'},
+                'duplicate_combo': {'EN': 'Duplicate entries found based on combination of: {}', 'FR': 'Doublons détectés selon la combinaison : {}'},
+                'cond_re_no': {'EN': 'ChldAvble is 0, ReNoAvble must have a value', 'FR': 'ChldAvble est 0, ReNoAvble doit contenir une valeur'},
+                'cond_hh_re_no': {'EN': 'HH_Avble is 0, HH_ReNoAvble must have a value', 'FR': 'HH_Avble est 0, HH_ReNoAvble doit contenir une valeur'}
             }
+
             if df.empty:
                 log_issue(sheet_name, None, None, 'Empty Sheet', validation_msgs['empty_sheet'][language_choice])
                 return
+
             actual_fields = df.columns.tolist()
             for field in expected_fields:
                 if field not in actual_fields:
                     continue
                 col_data = df[field].replace(r'^\s*$', np.nan, regex=True)
+
+                # Conditional rule: ReNoAvble
+                if sheet_name == 'D' and field == 'ReNoAvble' and 'ChldAvble' in df.columns:
+                    for idx, val in col_data.items():
+                        if str(df.loc[idx, 'ChldAvble']).strip() == '0' and pd.isna(val):
+                            log_issue(sheet_name, field, idx, 'Conditional Rule', validation_msgs['cond_re_no'][language_choice])
+                elif sheet_name == 'B-C' and field == 'HH_ReNoAvble' and 'HH_Avble' in df.columns:
+                    for idx, val in col_data.items():
+                        if str(df.loc[idx, 'HH_Avble']).strip() == '0' and pd.isna(val):
+                            log_issue(sheet_name, field, idx, 'Conditional Rule', validation_msgs['cond_hh_re_no'][language_choice])
+
                 if col_data.isnull().all():
                     log_issue(sheet_name, field, None, 'Missing Value', validation_msgs['completely_empty'][language_choice].format(field))
                     continue
+
                 for idx, val in col_data.items():
                     if pd.isna(val):
                         log_issue(sheet_name, field, idx, 'Missing Value', validation_msgs['missing_required'][language_choice])
@@ -132,6 +124,7 @@ if key_file and data_file:
                         allowed_vals = [str(v).strip().lower() for v in answer_map[field]]
                         if val_norm not in allowed_vals:
                             log_issue(sheet_name, field, idx, 'Invalid Value', validation_msgs['invalid_value'][language_choice].format(val))
+
             composite_fields = [f for f in ['ChldID', 'FarmerID', 'VisitType', 'EndDateActivity'] if f in df.columns]
             if len(composite_fields) >= 2:
                 composite_key = df[composite_fields].astype(str).agg('|'.join, axis=1)
@@ -149,15 +142,22 @@ if key_file and data_file:
             df_issues = pd.DataFrame(data_issues)
             st.dataframe(df_issues)
 
+            grouped_summary = df_issues.groupby(['Sheet', 'Field', 'Issue Type']).agg(
+                Issue_Count=('Description', 'count'),
+                Example_Description=('Description', 'first')
+            ).reset_index()
+
             if st.button("Generate Word Report"):
                 word_doc = Document()
                 word_doc.add_heading("MARS Data Quality Report", 0)
+
                 for sheet in df_issues['Sheet'].unique():
                     word_doc.add_heading(f"Sheet: {sheet}", level=1)
-                    issues = df_issues[df_issues['Sheet'] == sheet]
+                    issues = grouped_summary[grouped_summary['Sheet'] == sheet]
                     for _, row in issues.iterrows():
-                        msg = f"[{row['Issue Type']}] {row['Field']} (Row: {row['Row']}): {row['Description']}"
+                        msg = f"[{row['Issue Type']}] {row['Field']}: {row['Example_Description']} (Total: {row['Issue_Count']})"
                         word_doc.add_paragraph(msg, style='ListBullet')
+
                 filename = f"Validation_Report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.docx"
                 buffer = io.BytesIO()
                 word_doc.save(buffer)
@@ -168,6 +168,6 @@ if key_file and data_file:
                     data=buffer,
                     file_name=filename,
                     mime='application/vnd.openxmlformats-officedocument.wordprocessingml.document'
-                    )
-        else: 
+                )
+        else:
             st.success("No validation issues found!")
