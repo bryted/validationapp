@@ -7,7 +7,7 @@ import io
 
 st.set_page_config(page_title="Data Quality Validation App", layout="wide")
 
-st.title("Data Quality Validation App")
+st.title("Data Quality Validation App1")
 
 # --- Step 1: Upload Files ---
 st.header("Step 1: Upload Key and Data Files")
@@ -191,7 +191,7 @@ if key_file and data_file:
 
                     st.download_button(
                         label="📥 Download Word Report",
-                        data=buffer,
+                        data=buffer.getvalue(),  # <-- FIXED HERE
                         file_name=f"Validation_Report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.docx",
                         mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
                     )
