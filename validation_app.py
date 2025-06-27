@@ -7,8 +7,9 @@ from docx.shared import Pt, RGBColor
 from docx.oxml.ns import qn
 from docx.oxml import OxmlElement
 import os
+import io
 
-st.title("MARS Data Quality Validation App")
+st.title("Data Quality Validation App")
 
 # --- Step 1: Upload Files ---
 st.header("Step 1: Upload Key and Data Files")
@@ -158,8 +159,15 @@ if key_file and data_file:
                         msg = f"[{row['Issue Type']}] {row['Field']} (Row: {row['Row']}): {row['Description']}"
                         word_doc.add_paragraph(msg, style='ListBullet')
                 filename = f"Validation_Report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.docx"
-                word_doc.save(filename)
-                with open(filename, "rb") as f:
-                    st.download_button("📥 Download Word Report", f, file_name=filename, mime='application/vnd.openxmlformats-officedocument.wordprocessingml.document')
-        else:
+                buffer = io.BytesIO()
+                word_doc.save(buffer)
+                buffer.seek(0)
+
+                st.download_button(
+                    label="📥 Download Word Report",
+                    data=buffer,
+                    file_name=filename,
+                    mime='application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+                    )
+        else: 
             st.success("No validation issues found!")
