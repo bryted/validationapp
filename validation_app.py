@@ -239,7 +239,8 @@ if key_file and data_file:
                 return pd.Series({"Issue Count": len(group), "Example Description": descriptions[0]})
 
             grouped_summary = (
-                summary_df.groupby(["Sheet", "Field", "Issue Type"]).apply(aggregate_duplicates).reset_index()
+                summary_df.groupby(["Sheet", "Field", "Issue Type"], as_index=False)
+                .apply(aggregate_duplicates)
             )
 
             # --- Display in expanders ---
@@ -279,5 +280,22 @@ if key_file and data_file:
                         file_name=f"Validation_Report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.docx",
                         mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
                     )
+
+            # --- Download Excel report ---
+            if st.button("📊 Generate Excel Report"):
+                with st.spinner("Generating Excel report..."):
+                    output = io.BytesIO()
+                    with pd.ExcelWriter(output, engine="openpyxl") as writer:
+                        summary_df.to_excel(writer, sheet_name="All Issues", index=False)
+                        grouped_summary.to_excel(writer, sheet_name="Grouped Summary", index=False)
+                    output.seek(0)
+
+                    st.download_button(
+                        label="📊 Download Excel Report",
+                        data=output,
+                        file_name=f"Validation_Report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    )
+
         else:
             st.success("✅ No validation issues found!")
