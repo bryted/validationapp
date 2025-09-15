@@ -5,26 +5,33 @@ from datetime import datetime
 from docx import Document
 import io
 
+# --- Streamlit Config ---
 st.set_page_config(page_title="Data Quality Validation App", layout="wide")
-
-st.title("Data Quality Validation App1")
+st.title("📊 Data Quality Validation App")
 
 # --- Step 1: Upload Files ---
 st.header("Step 1: Upload Key and Data Files")
-key_file = st.file_uploader("Upload the KEY Excel file", type=["xlsx"], key="key")
-data_file = st.file_uploader("Upload the DATA Excel file", type=["xlsx"], key="data")
+key_file = st.file_uploader("🔑 Upload the KEY Excel file", type=["xlsx"], key="key")
+data_file = st.file_uploader("📂 Upload the DATA Excel file", type=["xlsx"], key="data")
 
+# --- Globals ---
 row_only_fields = []
 row_or_column_fields = ['VisitType', 'ReNoSchool', 'RChildType', 'RHhType', 'EducStatus']
 
 answer_map = {}
 key_description, data_sheets = None, None
 
+# --- Step 2: Process Files ---
 if key_file and data_file:
     with st.spinner("Reading and processing files..."):
-        key_description = pd.read_excel(key_file, sheet_name=None)
-        data_sheets = pd.read_excel(data_file, sheet_name=None)
+        try:
+            key_description = pd.read_excel(key_file, sheet_name=None)
+            data_sheets = pd.read_excel(data_file, sheet_name=None)
+        except Exception as e:
+            st.error(f"❌ Error reading files: {e}")
+            st.stop()
 
+        # --- Process answer_list ---
         answer_list_df = key_description.get('answer_list', pd.DataFrame())
         if not answer_list_df.empty:
             answer_list_df.dropna(how='all', inplace=True)
@@ -48,18 +55,37 @@ if key_file and data_file:
                 if unique_values:
                     answer_map[field] = unique_values
 
-    # Step 2: Country and Language Selection
+    # --- Step 3: Country & Language ---
     st.header("Step 2: Select Country and Language")
-    country_choice = st.selectbox("Select Country", options=['GHA', 'CIV'], index=0)
-    language_choice = st.selectbox("Select Language", options=['EN', 'FR'], index=0)
+    country_choice = st.selectbox("🌍 Select Country", options=['GHA', 'CIV'], index=0)
+    language_choice = st.selectbox("🗣️ Select Language", options=['EN', 'FR'], index=0)
 
-    # Step 3: Run Validation
-    if st.button("Run Validation"):
+    # --- Step 4: Run Validation ---
+    if st.button("🚦 Run Validation"):
         with st.spinner("Running validation checks..."):
-            description_df = key_description['description'] if 'description' in key_description else key_description
-            required_meta = description_df[description_df['For Mars KPI reporting'].isin(['Y', country_choice])]
+            # --- Load description sheet safely ---
+            if isinstance(key_description, dict):
+                if "description" in key_description:
+                    description_df = key_description["description"]
+                else:
+                    st.error("❌ 'description' sheet not found in KEY file")
+                    st.stop()
+            else:
+                description_df = key_description
+
+            # Normalize column names
+            description_df.columns = description_df.columns.str.strip().str.replace("\n", " ", regex=True)
+
+            if "For Mars KPI reporting" not in description_df.columns:
+                st.error("❌ Column 'For Mars KPI reporting' not found in description sheet")
+                st.stop()
+
+            required_meta = description_df[
+                description_df["For Mars KPI reporting"].isin(["Y", country_choice])
+            ]
             expected_fields = required_meta['Field Name Eng for partner'].dropna().unique().tolist()
-            field_types = dict(zip(description_df['Field Name Eng for partner'], description_df['Type of variable in the table']))
+            field_types = dict(zip(description_df['Field Name Eng for partner'],
+                                   description_df['Type of variable in the table']))
 
             data_issues = []
 
@@ -71,16 +97,24 @@ if key_file and data_file:
 
             def validate_sheet(df, sheet_name):
                 msgs = {
-                    'empty_sheet': {'EN': 'Sheet is present but contains no data', 'FR': 'La feuille est présente mais ne contient aucune donnée'},
-                    'completely_empty': {'EN': 'The variable "{}" is completely empty.', 'FR': 'La variable "{}" est complètement vide.'},
-                    'missing_required': {'EN': 'Field is required but missing', 'FR': 'Champ requis mais manquant'},
-                    'expected_date': {'EN': 'Expected format is DD-MM-YYYY', 'FR': 'Format attendu : JJ-MM-AAAA'},
-                    'expected_numeric': {'EN': 'Expected a numeric value', 'FR': 'Une valeur numérique était attendue'},
-                    'invalid_value': {'EN': "'{}' not in allowed values", 'FR': "'{}' ne fait pas partie des valeurs autorisées"},
-                    'alpha_numeric': {'EN': 'Value must be alphanumeric, not digits only', 'FR': 'La valeur doit être alphanumérique, pas uniquement des chiffres'},
-                    'duplicate_combo': {'EN': 'Duplicate entries found based on combination of: {}', 'FR': 'Doublons détectés selon la combinaison : {}'},
-                    'cond_re_no': {'EN': 'ChldAvble is 0, ReNoAvble must have a value', 'FR': 'ChldAvble est 0, ReNoAvble doit contenir une valeur'},
-                    'cond_hh_re_no': {'EN': 'HH_Avble is 0, HH_ReNoAvble must have a value', 'FR': 'HH_Avble est 0, HH_ReNoAvble doit contenir une valeur'}
+                    'empty_sheet': {'EN': 'Sheet is present but contains no data',
+                                    'FR': 'La feuille est présente mais ne contient aucune donnée'},
+                    'completely_empty': {'EN': 'The variable "{}" is completely empty.',
+                                         'FR': 'La variable "{}" est complètement vide.'},
+                    'missing_required': {'EN': 'Field is required but missing',
+                                         'FR': 'Champ requis mais manquant'},
+                    'expected_date': {'EN': 'Expected format is DD-MM-YYYY',
+                                      'FR': 'Format attendu : JJ-MM-AAAA'},
+                    'expected_numeric': {'EN': 'Expected a numeric value',
+                                         'FR': 'Une valeur numérique était attendue'},
+                    'invalid_value': {'EN': "'{}' not in allowed values",
+                                      'FR': "'{}' ne fait pas partie des valeurs autorisées'},
+                    'duplicate_combo': {'EN': 'Duplicate entries found based on combination of: {}',
+                                        'FR': 'Doublons détectés selon la combinaison : {}'},
+                    'cond_re_no': {'EN': 'ChldAvble is 0, ReNoAvble must have a value',
+                                   'FR': 'ChldAvble est 0, ReNoAvble doit contenir une valeur'},
+                    'cond_hh_re_no': {'EN': 'HH_Avble is 0, HH_ReNoAvble must have a value',
+                                      'FR': 'HH_Avble est 0, HH_ReNoAvble doit contenir une valeur'}
                 }
 
                 if df.empty:
@@ -92,85 +126,99 @@ if key_file and data_file:
                         continue
                     col_data = df[field].replace(r'^\s*$', np.nan, regex=True)
 
+                    # --- Conditional rules ---
                     if sheet_name == 'D' and field == 'ReNoAvble' and 'ChldAvble' in df.columns:
                         for idx, val in col_data.items():
                             if str(df.loc[idx, 'ChldAvble']).strip() == '0' and pd.isna(val):
-                                log_issue(sheet_name, field, idx, 'Conditional Rule', msgs['cond_re_no'][language_choice])
+                                log_issue(sheet_name, field, idx, 'Conditional Rule',
+                                          msgs['cond_re_no'][language_choice])
                     elif sheet_name == 'B-C' and field == 'HH_ReNoAvble' and 'HH_Avble' in df.columns:
                         for idx, val in col_data.items():
                             if str(df.loc[idx, 'HH_Avble']).strip() == '0' and pd.isna(val):
-                                log_issue(sheet_name, field, idx, 'Conditional Rule', msgs['cond_hh_re_no'][language_choice])
+                                log_issue(sheet_name, field, idx, 'Conditional Rule',
+                                          msgs['cond_hh_re_no'][language_choice])
 
+                    # --- Missing entire column ---
                     if col_data.isnull().all():
-                        log_issue(sheet_name, field, None, 'Missing Value', msgs['completely_empty'][language_choice].format(field))
+                        log_issue(sheet_name, field, None, 'Missing Value',
+                                  msgs['completely_empty'][language_choice].format(field))
                         continue
 
+                    # --- Row-by-row checks ---
                     for idx, val in col_data.items():
                         if pd.isna(val):
-                            log_issue(sheet_name, field, idx, 'Missing Value', msgs['missing_required'][language_choice])
+                            log_issue(sheet_name, field, idx, 'Missing Value',
+                                      msgs['missing_required'][language_choice])
                             continue
+
                         if field in field_types:
-                            if field_types[field] == 'datetime64[ns]':
+                            if "date" in str(field_types[field]).lower():
                                 try:
                                     pd.to_datetime(val, format='%d-%m-%Y')
                                 except:
-                                    log_issue(sheet_name, field, idx, 'Date Format Error', msgs['expected_date'][language_choice])
-                            elif field_types[field] == 'float64':
-                                if not isinstance(val, (int, float, np.float64, np.int64)):
-                                    log_issue(sheet_name, field, idx, 'Type Error', msgs['expected_numeric'][language_choice])
+                                    log_issue(sheet_name, field, idx, 'Date Format Error',
+                                              msgs['expected_date'][language_choice])
+                            elif "float" in str(field_types[field]).lower():
+                                try:
+                                    pd.to_numeric(val)
+                                except:
+                                    log_issue(sheet_name, field, idx, 'Type Error',
+                                              msgs['expected_numeric'][language_choice])
+
                         if field in answer_map:
                             if str(val).strip().lower() not in [str(v).strip().lower() for v in answer_map[field]]:
-                                log_issue(sheet_name, field, idx, 'Invalid Value', msgs['invalid_value'][language_choice].format(val))
+                                log_issue(sheet_name, field, idx, 'Invalid Value',
+                                          msgs['invalid_value'][language_choice].format(val))
 
+                # --- Duplicate check ---
                 keys = [f for f in ['ChldID', 'FarmerID', 'VisitType', 'EndDateActivity'] if f in df.columns]
                 if len(keys) >= 2:
-                    composite_key = df[keys].astype(str).agg('|'.join, axis=1)
+                    composite_key = df[keys].fillna("").astype(str).agg('|'.join, axis=1)
                     dupes = composite_key[composite_key.duplicated()]
                     if not dupes.empty:
-                        log_issue(sheet_name, keys[0], None, 'Duplicate', msgs['duplicate_combo'][language_choice].format(', '.join(keys)))
+                        log_issue(sheet_name, keys[0], None, 'Duplicate',
+                                  msgs['duplicate_combo'][language_choice].format(', '.join(keys)))
 
+            # Run validation for selected sheets
             for sheet_name in ['P', 'B-C', 'D', 'E_Com', 'E_Hho', 'E_Chd']:
                 if sheet_name in data_sheets:
                     validate_sheet(data_sheets[sheet_name], sheet_name)
 
+        # --- Step 5: Show Results ---
         st.subheader("Validation Summary")
         if data_issues:
             summary_df = pd.DataFrame(data_issues)
-            empty_col_issues = summary_df[(summary_df['Issue Type'] == 'Missing Value') & (summary_df['Row'].isnull())].copy()
-            empty_col_issues['Issue Count'] = 99999
-            empty_col_issues['Example Description'] = empty_col_issues['Description']
 
-            non_empty_issues = summary_df[summary_df['Row'].notnull() | (summary_df['Issue Type'] != 'Missing Value')].copy()
-
+            # Group issues for readability
             def aggregate_duplicates(group):
                 descriptions = group['Description'].tolist()
                 if group.name[2] == 'Duplicate':
                     values = ', '.join(sorted(set(
                         v.split(':')[-1].strip() for v in descriptions if ':' in v
                     )))
-                    return pd.Series({'Issue Count': len(group), 'Example Description': f"Duplicate IDs found: {values}"})
+                    return pd.Series({'Issue Count': len(group),
+                                      'Example Description': f"Duplicate IDs found: {values}"})
                 return pd.Series({'Issue Count': len(group), 'Example Description': descriptions[0]})
 
             grouped_summary = (
-                non_empty_issues.groupby(['Sheet', 'Field', 'Issue Type'])
+                summary_df.groupby(['Sheet', 'Field', 'Issue Type'])
                 .apply(aggregate_duplicates)
                 .reset_index()
             )
 
-            summary_grouped = pd.concat([
-                grouped_summary,
-                empty_col_issues[['Sheet', 'Field', 'Issue Type', 'Issue Count', 'Example Description']]
-            ], ignore_index=True)
+            # --- Display in expanders ---
+            for sheet in grouped_summary['Sheet'].unique():
+                with st.expander(f"📄 Issues in Sheet: {sheet}", expanded=False):
+                    st.dataframe(grouped_summary[grouped_summary['Sheet'] == sheet])
 
-            st.dataframe(summary_grouped)
-
-            if st.button("Generate Word Report"):
+            # --- Download Word report ---
+            if st.button("📥 Generate Word Report"):
                 with st.spinner("Generating Word report..."):
                     word_doc = Document()
                     word_doc.add_heading("MARS Data Quality Report", 0)
-                    for sheet in summary_grouped['Sheet'].unique():
+                    for sheet in grouped_summary['Sheet'].unique():
                         word_doc.add_heading(f"Sheet: {sheet}", level=1)
-                        issues = summary_grouped[summary_grouped['Sheet'] == sheet]
+                        issues = grouped_summary[grouped_summary['Sheet'] == sheet]
                         table = word_doc.add_table(rows=1, cols=4)
                         table.style = 'Light List Accent 1'
                         hdr_cells = table.rows[0].cells
@@ -191,9 +239,9 @@ if key_file and data_file:
 
                     st.download_button(
                         label="📥 Download Word Report",
-                        data=buffer.getvalue(),  # <-- FIXED HERE
+                        data=buffer.getvalue(),
                         file_name=f"Validation_Report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.docx",
                         mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
                     )
         else:
-            st.success("No validation issues found!")
+            st.success("✅ No validation issues found!")
