@@ -255,8 +255,10 @@ if key_file and data_file:
             word_buffer = io.BytesIO()
             word_doc = Document()
             word_doc.add_heading("MARS Data Quality Report", 0)
+
+            # Summary section
             for sheet in grouped_summary["Sheet"].unique():
-                word_doc.add_heading(f"Sheet: {sheet}", level=1)
+                word_doc.add_heading(f"Sheet: {sheet} - Summary", level=1)
                 issues = grouped_summary[grouped_summary["Sheet"] == sheet]
                 table = word_doc.add_table(rows=1, cols=4)
                 table.style = "Light List Accent 1"
@@ -271,6 +273,27 @@ if key_file and data_file:
                     row_cells[1].text = str(row["Issue Type"])
                     row_cells[2].text = str(row["Issue Count"])
                     row_cells[3].text = str(row["Example Description"])
+
+            # Detailed section
+            for sheet in summary_df["Sheet"].unique():
+                word_doc.add_heading(f"Sheet: {sheet} - Detailed Issues", level=2)
+                issues = summary_df[summary_df["Sheet"] == sheet]
+                table = word_doc.add_table(rows=1, cols=5)
+                table.style = "Light Grid Accent 1"
+                hdr_cells = table.rows[0].cells
+                hdr_cells[0].text = "Row"
+                hdr_cells[1].text = "Field"
+                hdr_cells[2].text = "Issue Type"
+                hdr_cells[3].text = "Description"
+                hdr_cells[4].text = "Sheet"
+                for _, row in issues.iterrows():
+                    row_cells = table.add_row().cells
+                    row_cells[0].text = str(row["Row"])
+                    row_cells[1].text = str(row["Field"])
+                    row_cells[2].text = str(row["Issue Type"])
+                    row_cells[3].text = str(row["Description"])
+                    row_cells[4].text = str(row["Sheet"])
+
             word_doc.save(word_buffer)
             word_buffer.seek(0)
 
