@@ -248,54 +248,52 @@ if key_file and data_file:
                 with st.expander(f"📄 Issues in Sheet: {sheet}", expanded=False):
                     st.dataframe(grouped_summary[grouped_summary["Sheet"] == sheet])
 
-            # --- Download Word report ---
-            if st.button("📥 Generate Word Report"):
-                with st.spinner("Generating Word report..."):
-                    word_doc = Document()
-                    word_doc.add_heading("MARS Data Quality Report", 0)
-                    for sheet in grouped_summary["Sheet"].unique():
-                        word_doc.add_heading(f"Sheet: {sheet}", level=1)
-                        issues = grouped_summary[grouped_summary["Sheet"] == sheet]
-                        table = word_doc.add_table(rows=1, cols=4)
-                        table.style = "Light List Accent 1"
-                        hdr_cells = table.rows[0].cells
-                        hdr_cells[0].text = "Field"
-                        hdr_cells[1].text = "Issue Type"
-                        hdr_cells[2].text = "Issue Count"
-                        hdr_cells[3].text = "Example Description"
-                        for _, row in issues.iterrows():
-                            row_cells = table.add_row().cells
-                            row_cells[0].text = str(row["Field"])
-                            row_cells[1].text = str(row["Issue Type"])
-                            row_cells[2].text = str(row["Issue Count"])
-                            row_cells[3].text = str(row["Example Description"])
+            # --- Banner to remind downloads ---
+            st.info("📥 Scroll down to download the validation report in Word or Excel format.")
 
-                    buffer = io.BytesIO()
-                    word_doc.save(buffer)
-                    buffer.seek(0)
+            # --- Word download ---
+            word_buffer = io.BytesIO()
+            word_doc = Document()
+            word_doc.add_heading("MARS Data Quality Report", 0)
+            for sheet in grouped_summary["Sheet"].unique():
+                word_doc.add_heading(f"Sheet: {sheet}", level=1)
+                issues = grouped_summary[grouped_summary["Sheet"] == sheet]
+                table = word_doc.add_table(rows=1, cols=4)
+                table.style = "Light List Accent 1"
+                hdr_cells = table.rows[0].cells
+                hdr_cells[0].text = "Field"
+                hdr_cells[1].text = "Issue Type"
+                hdr_cells[2].text = "Issue Count"
+                hdr_cells[3].text = "Example Description"
+                for _, row in issues.iterrows():
+                    row_cells = table.add_row().cells
+                    row_cells[0].text = str(row["Field"])
+                    row_cells[1].text = str(row["Issue Type"])
+                    row_cells[2].text = str(row["Issue Count"])
+                    row_cells[3].text = str(row["Example Description"])
+            word_doc.save(word_buffer)
+            word_buffer.seek(0)
 
-                    st.download_button(
-                        label="📥 Download Word Report",
-                        data=buffer.getvalue(),
-                        file_name=f"Validation_Report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.docx",
-                        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                    )
+            st.download_button(
+                label="📥 Download Word Report",
+                data=word_buffer,
+                file_name=f"Validation_Report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.docx",
+                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            )
 
-            # --- Download Excel report ---
-            if st.button("📊 Generate Excel Report"):
-                with st.spinner("Generating Excel report..."):
-                    output = io.BytesIO()
-                    with pd.ExcelWriter(output, engine="openpyxl") as writer:
-                        summary_df.to_excel(writer, sheet_name="All Issues", index=False)
-                        grouped_summary.to_excel(writer, sheet_name="Grouped Summary", index=False)
-                    output.seek(0)
+            # --- Excel download ---
+            excel_buffer = io.BytesIO()
+            with pd.ExcelWriter(excel_buffer, engine="openpyxl") as writer:
+                summary_df.to_excel(writer, sheet_name="All Issues", index=False)
+                grouped_summary.to_excel(writer, sheet_name="Grouped Summary", index=False)
+            excel_buffer.seek(0)
 
-                    st.download_button(
-                        label="📊 Download Excel Report",
-                        data=output,
-                        file_name=f"Validation_Report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
-                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                    )
+            st.download_button(
+                label="📊 Download Excel Report",
+                data=excel_buffer,
+                file_name=f"Validation_Report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            )
 
         else:
             st.success("✅ No validation issues found!")
