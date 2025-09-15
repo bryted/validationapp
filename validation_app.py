@@ -63,12 +63,13 @@ if key_file and data_file:
     # --- Step 4: Run Validation ---
     if st.button("🚦 Run Validation"):
         with st.spinner("Running validation checks..."):
-            # --- Load description sheet safely ---
+            # --- Load description sheet robustly ---
             if isinstance(key_description, dict):
-                if "description" in key_description:
-                    description_df = key_description["description"]
+                normalized = {s.strip().lower(): s for s in key_description.keys()}
+                if "description" in normalized:
+                    description_df = key_description[normalized["description"]]
                 else:
-                    st.error("❌ 'description' sheet not found in KEY file")
+                    st.error(f"❌ Could not find 'description' sheet. Available sheets: {list(key_description.keys())}")
                     st.stop()
             else:
                 description_df = key_description
@@ -78,6 +79,7 @@ if key_file and data_file:
 
             if "For Mars KPI reporting" not in description_df.columns:
                 st.error("❌ Column 'For Mars KPI reporting' not found in description sheet")
+                st.write("Available columns:", description_df.columns.tolist())
                 st.stop()
 
             required_meta = description_df[
